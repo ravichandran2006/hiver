@@ -84,7 +84,11 @@ and evaluated using:
 
 ## System Architecture
 
-The complete workflow is:
+## System Workflow
+
+The complete workflow of the Amazon Customer Support AI Agent is shown below.
+
+![Amazon Customer Support AI Agent Workflow](assets/Screenshot%202026-09-10%20231538.png)
 
 ```text
                  Customer Message
