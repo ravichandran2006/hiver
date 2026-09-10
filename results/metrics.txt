@@ -1,0 +1,4 @@
+Accuracy: 0.4714
+Macro-F1: 0.3672
+Training examples: 560
+Test examples: 140
