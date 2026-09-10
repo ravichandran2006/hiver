@@ -1,8 +1,8 @@
-Evaluation Report
+# Evaluation Report
 
-1. Golden Evaluation Set
+## 1. Golden Evaluation Set
 
-A separate golden evaluation set of 200 customer messages was created from the prepared AmazonHelp dataset.
+A separate golden evaluation set of **200 customer messages** was created from the prepared AmazonHelp dataset.
 
 The examples were sampled using a fixed random seed to make the evaluation reproducible. The golden examples were kept separate from the classifier training data.
 
@@ -12,28 +12,36 @@ When a message contained multiple issues, the label was assigned based on the pr
 
 The golden set was used only for evaluation and was not used to train the classifier.
 
-Golden Set Summary
-Source: AmazonHelp customer-support conversations
-Size: 200 examples
-Label type: Intent
-Number of intents: 8
-Labeling: Human-reviewed
-Used for training: No
-Used for evaluation: Yes
-2. Problem Framing
-What Does Good Mean?
+### Golden Set Summary
+
+| Property | Value |
+|---|---|
+| Source | AmazonHelp customer-support conversations |
+| Size | 200 examples |
+| Label type | Intent |
+| Number of intents | 8 |
+| Labeling | Human-reviewed |
+| Used for training | No |
+| Used for evaluation | Yes |
+
+---
+
+## 2. Problem Framing
+
+### What Does Good Mean?
 
 For Amazon customer support, a good response should:
 
-Correctly understand the customer's primary issue.
-Address the customer's actual problem.
-Be consistent with how similar Amazon cases were historically handled.
-Provide a useful next step.
-Avoid making unsupported claims.
-Recognize cases that require human intervention.
+- Correctly understand the customer's primary issue.
+- Address the customer's actual problem.
+- Be consistent with how similar Amazon cases were historically handled.
+- Provide a useful next step.
+- Avoid making unsupported claims.
+- Recognize cases that require human intervention.
 
 The system therefore treats customer-support quality as a combination of:
 
+```text
 Intent Understanding
         +
 Historical Evidence
@@ -84,8 +92,9 @@ The classifier evaluation is designed to run within the assignment's 15-minute r
 
 The labeled dataset was divided into:
 
-Training examples: 800
-Testing examples:  200
+Dataset	Examples
+Training	800
+Testing	200
 
 The classifier achieved:
 
@@ -154,23 +163,26 @@ Groundedness	Is the response supported by the retrieved historical evidence?
 Usefulness	Does the response provide a useful next step?
 Scoring Rubric
 Relevance
-1 = Does not address the customer's issue
-2 = Mostly irrelevant
-3 = Partially addresses the issue
-4 = Relevant with minor weaknesses
-5 = Directly addresses the issue
+Score	Description
+1	Does not address the customer's issue
+2	Mostly irrelevant
+3	Partially addresses the issue
+4	Relevant with minor weaknesses
+5	Directly addresses the issue
 Groundedness
-1 = Unsupported by evidence
-2 = Mostly unsupported
-3 = Partially supported
-4 = Mostly supported
-5 = Strongly supported by historical evidence
+Score	Description
+1	Unsupported by evidence
+2	Mostly unsupported
+3	Partially supported
+4	Mostly supported
+5	Strongly supported by historical evidence
 Usefulness
-1 = Provides no useful help
-2 = Very limited help
-3 = Provides a reasonable next step
-4 = Provides a useful actionable response
-5 = Provides a clear and highly useful next step
+Score	Description
+1	Provides no useful help
+2	Provides very limited help
+3	Provides a reasonable next step
+4	Provides a useful actionable response
+5	Provides a clear and highly useful next step
 
 The evaluation harness is implemented in:
 
@@ -209,17 +221,14 @@ Therefore, this report does not claim a numerical human-vs-LLM agreement score t
 
 This is reported as an evaluation limitation rather than replacing the missing evaluation with unsupported numbers.
 
-A complete evaluation run should report:
+Once sufficient API capacity is available, the evaluation should report:
 
-Number of evaluated responses: N
-
-Relevance agreement:     XX%
-Groundedness agreement:  XX%
-Usefulness agreement:    XX%
-Overall agreement:       XX%
-
-once sufficient API capacity is available.
-
+Metric	Result
+Number of evaluated responses	N
+Relevance agreement	XX%
+Groundedness agreement	XX%
+Usefulness agreement	XX%
+Overall agreement	XX%
 8. Failure Analysis
 Failure 1 — Delivery vs Order Confusion
 
@@ -339,8 +348,7 @@ The AI agent successfully resolves 50.00% of customer problems.
 
 The headline number is therefore useful as a classifier metric, but it is not a complete measure of customer-support quality.
 
-10. Decision Log:
-
+10. Decision Log
 Selected AmazonHelp because it provides a large number of real customer-support conversations.
 Used a 10,000-pair working dataset to keep experimentation practical and reproducible.
 Defined eight intents to provide useful support coverage without creating excessive class overlap.
