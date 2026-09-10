@@ -2,7 +2,7 @@
 
 ## 1. Golden Evaluation Set
 
-A separate golden evaluation set of **200 customer messages** was created from the prepared AmazonHelp dataset.
+A separate **200-example golden evaluation set** was created from the prepared AmazonHelp dataset.
 
 The examples were sampled using a fixed random seed to make the evaluation reproducible. The golden examples were kept separate from the classifier training data.
 
@@ -10,7 +10,7 @@ Each example was manually reviewed and assigned exactly one of the eight predefi
 
 When a message contained multiple issues, the label was assigned based on the primary customer problem expressed in the message.
 
-The golden set was used only for evaluation and was not used to train the classifier.
+The golden set was used **only for evaluation** and was not used to train the classifier.
 
 ### Golden Set Summary
 
@@ -49,20 +49,85 @@ Historical Evidence
 Response Quality
         +
 Escalation Quality
-What Was Not Built
 
-The prototype intentionally does not directly execute:
+3. System Overview
 
-Refunds
-Order cancellations
-Payment changes
-Account modifications
-Password changes
-Other customer-account actions
+The proposed system follows the following pipeline:
 
-The system only drafts a response and recommends whether human escalation is appropriate.
+Customer Message
+       |
+       v
+Intent Classification
+       |
+       v
+Historical Case Retrieval
+       |
+       v
+Evidence Collection
+       |
+       v
+LLM Response Generation
+       |
+       v
+Escalation Decision
+       |
+       v
+Final Support Response
+Intent Categories
 
-3. Reproducibility and Runtime
+The system uses eight intents:
+
+Intent	Description
+DELIVERY_TRACKING	Delivery delays, missing packages, tracking and delivery status
+ORDER_MANAGEMENT	Order cancellation, modification and order-related issues
+REFUND_RETURN	Refunds, returns and return-related issues
+PAYMENT_BILLING	Payment, billing and charge-related issues
+ACCOUNT_SECURITY	Hacked accounts, unauthorized access and account security
+PRODUCT_TECHNICAL	Product defects and technical problems
+PRIME_DIGITAL	Prime, Kindle, Amazon Music and digital services
+GENERAL_COMPLAINT	General complaints or issues that do not clearly fit another category
+Intent Classification
+
+The first stage predicts one of the eight predefined customer-support intents.
+
+Historical Retrieval
+
+After identifying the intent, the system searches the prepared AmazonHelp conversation dataset for historically similar customer messages.
+
+TF-IDF vectorization and cosine similarity are used to retrieve the top three historical cases.
+
+The retrieved cases contain:
+
+Historical customer message
+Historical Amazon response
+Similarity score
+
+These cases provide evidence for the response-generation stage.
+
+Response Generation
+
+The LLM receives:
+
+The customer's current message
+The predicted intent
+The retrieved historical support cases
+
+It then generates a new response rather than directly copying a historical response.
+
+The generated output contains:
+
+{
+  "reply": "Draft response to the customer",
+  "escalate": false,
+  "reason": "Reason for the escalation decision"
+}
+Escalation
+
+The agent also determines whether the issue should be handled automatically or escalated to a human support representative.
+
+The escalation decision is returned together with a reason so that the decision is interpretable.
+
+4. Reproducibility and Runtime
 
 The repository contains the scripts required to reproduce the classifier headline result.
 
@@ -86,15 +151,18 @@ results/confusion_matrix.csv
 
 The pipeline uses a fixed random seed for sampling and splitting, making the reported evaluation reproducible.
 
-The classifier evaluation is designed to run within the assignment's 15-minute reproduction target on a normal development machine. LLM-based response generation and evaluation are separate API-dependent steps.
+The classifier evaluation is designed to run within the assignment's 15-minute reproduction target on a normal development machine.
 
-4. Intent Classification Evaluation
+LLM-based response generation and evaluation are separate API-dependent steps.
+
+5. Intent Classification Evaluation
 
 The labeled dataset was divided into:
 
 Dataset	Examples
 Training	800
 Testing	200
+Total	1,000
 
 The classifier achieved:
 
@@ -104,27 +172,32 @@ Macro F1	40.00%	6.28%
 
 The proposed classifier improves over the majority baseline by:
 
-16.43 percentage points in accuracy
+16.43 percentage points in Accuracy
 33.72 percentage points in Macro F1
 
 The improvement in Macro F1 is particularly important because the intent classes are imbalanced.
 
-5. Baseline Comparison
-5.1 Trivial Baseline — Majority Class
+Accuracy alone can hide poor performance on minority classes, while Macro F1 gives every intent equal importance.
+
+6. Baseline Comparison
+6.1 Trivial Baseline — Majority Class
 
 The majority baseline always predicts:
 
 DELIVERY_TRACKING
 
-Results:
+This provides a simple lower-bound reference for the classifier.
 
+Results
 Metric	Majority Baseline	Proposed Model
 Accuracy	33.57%	50.00%
 Macro F1	6.28%	40.00%
 
-The proposed classifier substantially outperforms the trivial baseline.
+The proposed classifier substantially outperforms the majority-class baseline.
 
-5.2 Simple Baseline — Nearest Historical Response
+This indicates that the classifier is learning useful patterns from customer messages rather than simply predicting the most common intent.
+
+6.2 Simple Baseline — Nearest Historical Response
 
 The second baseline retrieves the single most similar historical customer message using TF-IDF cosine similarity and directly returns the associated Amazon response.
 
@@ -134,13 +207,15 @@ src/nearest_neighbor_baseline.py
 
 This baseline was tested on representative customer-support cases.
 
-It can produce useful responses when the retrieved example is highly similar. However, it can also return an inappropriate response when lexical similarity does not correspond to semantic similarity.
+It can produce useful responses when the retrieved example is highly similar.
+
+However, it can also return an inappropriate response when lexical similarity does not correspond to semantic similarity.
 
 For example, a Kindle-related technical question retrieved a historical response concerning a telephone-number issue. Although there was some lexical similarity, the historical response did not address the actual underlying problem.
 
 The proposed system addresses this limitation by retrieving multiple historical cases and using an LLM to generate a new response rather than directly copying one historical response.
 
-Comparison
+Component Comparison
 Component	Nearest-Neighbor Baseline	Proposed Agent
 Intent classification	No	Yes
 Historical retrieval	1 case	Top 3 cases
@@ -151,17 +226,16 @@ Escalation reason	No	Yes
 
 A quantitative response-quality score for this baseline has not been claimed because the full human/LLM response evaluation was not completed due to the LLM API quota limitation.
 
-6. Response Quality Evaluation
+7. Response Quality Evaluation
 
 Generated responses are evaluated using an LLM-as-judge rubric.
 
-Each response is scored from 1 to 5 on:
+Each response is scored from 1 to 5 on three dimensions.
 
 Dimension	Evaluation Question
 Relevance	Does the response address the customer's actual problem?
 Groundedness	Is the response supported by the retrieved historical evidence?
 Usefulness	Does the response provide a useful next step?
-Scoring Rubric
 Relevance
 Score	Description
 1	Does not address the customer's issue
@@ -187,7 +261,7 @@ Score	Description
 The evaluation harness is implemented in:
 
 src/evaluate_responses.py
-7. Human vs LLM Judge Agreement
+8. Human vs LLM Judge Agreement
 
 The automated LLM judge is intended to be validated against human ratings.
 
@@ -195,24 +269,21 @@ The evaluation process is:
 
 Generated Response
         |
-        +-------------------+
-        |                   |
-        v                   v
-   Human Rating        LLM Rating
-        |                   |
-        +---------+---------+
-                  |
-                  v
-          Agreement Analysis
+        +----------------------+
+        |                      |
+        v                      v
+  Human Rating           LLM Rating
+        |                      |
+        +----------+-----------+
+                   |
+                   v
+           Agreement Analysis
 
 The same generated responses are rated by both the human evaluator and the LLM judge using:
 
 Relevance
 Groundedness
 Usefulness
-
-The comparison should measure agreement between human and automated judgments.
-
 Current Evaluation Status
 
 The response-quality evaluation harness was implemented, but the initial evaluation run was interrupted by the daily LLM API token limit.
@@ -221,15 +292,13 @@ Therefore, this report does not claim a numerical human-vs-LLM agreement score t
 
 This is reported as an evaluation limitation rather than replacing the missing evaluation with unsupported numbers.
 
-Once sufficient API capacity is available, the evaluation should report:
-
 Metric	Result
-Number of evaluated responses	N
-Relevance agreement	XX%
-Groundedness agreement	XX%
-Usefulness agreement	XX%
-Overall agreement	XX%
-8. Failure Analysis
+Number of evaluated responses	Not measured
+Relevance agreement	Not measured
+Groundedness agreement	Not measured
+Usefulness agreement	Not measured
+Overall agreement	Not measured
+9. Failure Analysis
 Failure 1 — Delivery vs Order Confusion
 
 Customer messages containing words such as:
@@ -283,11 +352,26 @@ Improvement
 
 Use a labeling rule that prioritizes the actionable support issue when it is clearly identifiable.
 
+For example:
+
+If a concrete support issue exists:
+    assign the actionable intent
+
+Otherwise:
+    assign GENERAL_COMPLAINT
 Failure 4 — Lexical Retrieval Misses Semantic Similarity
 
 TF-IDF retrieval depends on word overlap.
 
 Two messages describing the same issue with different wording can receive a relatively low similarity score.
+
+For example:
+
+"My package hasn't arrived yet."
+
+"Where is my delivery? It was supposed to come yesterday."
+
+These messages have similar meaning but different wording.
 
 Hypothesis
 
@@ -307,19 +391,21 @@ Example
 
 A Kindle-related technical question retrieved a historical response related to a telephone-number issue.
 
+The response therefore contained information that was not relevant to the customer's actual problem.
+
 Hypothesis
 
 Single-example lexical retrieval is too sensitive to surface-level word overlap.
 
 Improvement
 
-Retrieve multiple examples and generate a response from the common evidence rather than copying one response.
+Retrieve multiple examples and generate a response from the common evidence rather than copying one historical response.
 
-9. What Is Misleading About the Headline Number?
+10. What Is Misleading About My Headline Number?
 
 The headline classifier accuracy of 50.00% should not be interpreted as the overall performance of the customer-support agent.
 
-It measures only intent classification on the held-out testing set.
+It measures only intent classification accuracy on the held-out testing set.
 
 It does not measure:
 
@@ -333,10 +419,12 @@ Business impact
 
 The result is also affected by class imbalance.
 
-Therefore, Macro F1 is reported alongside accuracy:
+Therefore, Macro F1 is reported alongside accuracy.
 
-Accuracy: 50.00%
-Macro F1: 40.00%
+Headline Metrics
+Metric	Result
+Accuracy	50.00%
+Macro F1	40.00%
 
 The correct interpretation is:
 
@@ -348,19 +436,23 @@ The AI agent successfully resolves 50.00% of customer problems.
 
 The headline number is therefore useful as a classifier metric, but it is not a complete measure of customer-support quality.
 
-10. Decision Log
-Selected AmazonHelp because it provides a large number of real customer-support conversations.
-Used a 10,000-pair working dataset to keep experimentation practical and reproducible.
-Defined eight intents to provide useful support coverage without creating excessive class overlap.
-Used 800 labeled examples for training instead of manually labeling the entire dataset.
-Created a separate 200-example golden set to provide an independent evaluation set.
-Used a fixed random seed to make sampling and evaluation reproducible.
-Used TF-IDF for classification because it is lightweight, fast and interpretable.
-Used Logistic Regression because it works efficiently with sparse TF-IDF features.
-Reported Macro F1 alongside accuracy because the intent distribution is imbalanced.
-Used TF-IDF cosine similarity for retrieval as a simple and reproducible retrieval approach.
-Retrieved three historical cases to provide multiple pieces of evidence instead of relying on one example.
-Used an LLM for response generation so information from multiple historical cases can be synthesized.
-Used structured output containing reply, escalate, and reason.
-Restricted the agent from executing customer-account actions because the prototype does not have the necessary integrations.
-Added majority and nearest-neighbor baselines to compare the proposed approach against both a trivial and a simple alternative.
+11. Decision Log
+
+The following non-obvious decisions were made during development.
+
+#	Decision	Reason
+1	Selected AmazonHelp as the target brand	Provides a large number of real customer-support conversations
+2	Used a 10,000-pair working dataset	Keeps experimentation practical and reproducible
+3	Defined eight intents	Provides useful support coverage without creating excessive class overlap
+4	Used 800 labeled examples for training	Avoids manually labeling the entire dataset
+5	Created a separate 200-example golden set	Provides an independent evaluation set
+6	Used a fixed random seed	Makes sampling and evaluation reproducible
+7	Used TF-IDF for classification	Lightweight, fast and interpretable
+8	Used Logistic Regression	Works efficiently with sparse TF-IDF features
+9	Reported Macro F1 alongside accuracy	Accounts for imbalanced intent classes
+10	Used TF-IDF cosine similarity for retrieval	Simple and reproducible retrieval approach
+11	Retrieved three historical cases	Provides multiple pieces of evidence instead of relying on one example
+12	Used an LLM for response generation	Allows information from multiple historical cases to be synthesized
+13	Used structured output	Ensures the agent returns reply, escalate, and reason consistently
+14	Restricted direct customer-account actions	Prototype does not have the necessary integrations
+15	Added majority and nearest-neighbor baselines	Provides both a trivial and a simple alternative for comparison
