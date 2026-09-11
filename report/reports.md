@@ -1,812 +1,155 @@
-Evaluation Report
+# Evaluation & System Report: AI Customer Support Agent
 
-1. Golden Evaluation Set
+This report details the system design, dataset construction, baseline comparisons, evaluation metrics, failure modes, and architectural decision logs for the prototype AI Customer Support Agent built on the `AmazonHelp` dataset.
 
-A separate 200-example golden evaluation set was created from the prepared AmazonHelp dataset.
+---
 
-The examples were sampled using a fixed random seed to make the evaluation reproducible. The golden examples were kept separate from the classifier training data.
+## 1. System Overview & Scope
 
-Each example was manually reviewed and assigned exactly one of the eight predefined intent categories.
+The system is designed as a decision-support pipeline for customer support agents rather than an autonomous execution engine.
 
-When a message contained multiple issues, the label was assigned based on the primary customer problem expressed in the message.
+### System Pipeline
 
-The golden set was used only for evaluation and was not used to train the classifier.
+## 2. Golden Evaluation Set & Dataset Split
 
-Golden Set Summary
+A separate, reproducible 200-example golden evaluation set was created from the prepared AmazonHelp dataset using a fixed random seed.
 
-Property
+### Dataset Split Overview
+| Dataset Partition | Size | Usage |
+| :--- | :--- | :--- |
+| **Training Set** | 800 examples | Classifier training |
+| **Golden Test Set** | 200 examples | Reproducible system evaluation only (never used in training) |
+| **Total** | **1,000 examples** | Combined annotated corpus |
 
-Value
+### Golden Set Properties
+* **Source:** AmazonHelp customer-support conversations
+* **Size:** 200 examples
+* **Label Type:** Human-reviewed intent (exactly 1 of 8 predefined categories per message)
+* **Labeling Rule:** When messages expressed multiple concerns, labels were assigned based on the **primary** customer issue.
 
-Source
+---
+
+## 3. Predefined Intent Categories
+
+| Intent Category | Description & Scope |
+| :--- | :--- |
+| `DELIVERY_TRACKING` | Delivery delays, missing packages, tracking status, carrier issues |
+| `ORDER_MANAGEMENT` | Order cancellations, order modifications, general order placement issues |
+| `REFUND_RETURN` | Return requests, drop-off processes, refund status tracking |
+| `PAYMENT_BILLING` | Payment failures, double charges, billing inquiries |
+| `ACCOUNT_SECURITY` | Compromised accounts, unauthorized access, security alerts |
+| `PRODUCT_TECHNICAL` | Product defects, hardware/software troubleshooting |
+| `PRIME_DIGITAL` | Prime memberships, Kindle, Amazon Music, digital media purchases |
+| `GENERAL_COMPLAINT` | Expressed dissatisfaction without a clear actionable primary category |
 
-AmazonHelp customer-support conversations
+---
 
-Size
+## 4. Evaluation & Baseline Comparisons
 
-200 examples
+### 4.1 Intent Classification Metrics
+The proposed classifier (TF-IDF + Logistic Regression) was evaluated against a Majority Class Baseline (which trivially predicts `DELIVERY_TRACKING` for all instances).
 
-Label type
+| Metric | Majority Baseline | Proposed Model | Improvement |
+| :--- | :--- | :--- | :--- |
+| **Accuracy** | 33.57% | **50.00%** | +16.43% |
+| **Macro F1** | 6.28% | **40.00%** | +33.72% |
 
-Intent
+> **Key Takeaway:** The significant leap in **Macro F1 (+33.72%)** highlights that the proposed model handles imbalanced minority classes far better than the baseline, which scores poorly due to class weighting.
 
-Number of intents
+### 4.2 Component & System Comparison
 
-8
+| System Component | Nearest-Neighbor Baseline | Proposed Agent |
+| :--- | :--- | :--- |
+| **Intent Classification** | No | Yes (8-Class Intent Model) |
+| **Historical Retrieval** | Top 1 case | Top 3 cases |
+| **Response Generation** | Exact copy of historical response | LLM-synthesized context draft |
+| **Evidence Synthesis** | No | Yes |
+| **Escalation Decision** | No | Yes (`escalate`: boolean) |
+| **Escalation Rationale** | No | Yes (`reason`: string) |
 
-Labeling
+### 4.3 Response Quality Rubric & Status
+Responses are evaluated via an **LLM-as-a-Judge** framework using a 1–5 scoring scale across three dimensions:
+* **Relevance (1–5):** Does the response address the customer's core issue?
+* **Groundedness (1–5):** Is the response directly backed by retrieved historical cases?
+* **Usefulness (1–5):** Does it provide clear, actionable next steps?
 
-Human-reviewed
+> [!WARNING]
+> **Evaluation Status Note:** Full quantitative LLM-as-a-Judge and Human-vs-LLM agreement scoring runs were interrupted due to daily API rate limits. To maintain scientific integrity, unverified agreement scores are omitted.
 
-Used for training
+---
 
-No
+## 5. Failure Analysis
 
-Used for evaluation
+1. **Delivery vs. Order Management Confusion**
+   * *Issue:* Overlap in terms like `"order"`, `"package"`, and `"status"` causes misclassification between `DELIVERY_TRACKING` and `ORDER_MANAGEMENT`.
+   * *Mitigation:* Transition from lexical TF-IDF features to dense semantic embeddings.
+2. **Poor Performance on Minority Intents**
+   * *Issue:* Low recall on `PAYMENT_BILLING`, `PRIME_DIGITAL`, and `REFUND_RETURN` due to insufficient training representation in the 800-example set.
+   * *Mitigation:* Expand target labeling for minority classes or apply class-reweighting strategies.
+3. **`GENERAL_COMPLAINT` Overlap**
+   * *Issue:* Highly frustrated customers mentioning specific issues (e.g., late refunds) get misclassified under `GENERAL_COMPLAINT`.
+   * *Mitigation:* Enforce a hierarchy rule: classify by actionable technical/operational issue first; fall back to `GENERAL_COMPLAINT` only if no actionable issue exists.
+4. **Lexical Retrieval Mismatches**
+   * *Issue:* TF-IDF cosine similarity fails when sentence structures differ despite identical intent (e.g., *"Where is my package?"* vs. *"My delivery hasn't arrived"*).
+   * *Mitigation:* Implement dense vector retrieval (e.g., sentence-transformers) followed by a cross-encoder reranker.
+5. **Over-Specific Nearest-Neighbor Responses**
+   * *Issue:* Baseline directly copying single historical responses often introduces irrelevant specifics (e.g., answering a Kindle issue with phone support advice).
+   * *Mitigation:* Synthesizing multi-case context using an LLM prevents single-source hallucination or over-specificity.
 
-Yes
+---
 
-2. Problem Framing
-
-What Does Good Mean?
-
-For Amazon customer support, a good response should:
-
-Correctly understand the customer's primary issue.
-
-Address the customer's actual problem.
-
-Be consistent with how similar Amazon cases were historically handled.
-
-Provide a useful next step.
-
-Avoid making unsupported claims.
-
-Recognize cases that require human intervention.
-
-The system therefore treats customer-support quality as a combination of:
-
-Intent Understanding
-        +
-Historical Evidence
-        +
-Response Quality
-        +
-Escalation Quality
-
-What Was Not Built
-
-The prototype intentionally does not directly execute customer-account actions.
-
-The system does not perform:
-
-Refunds
-
-Order cancellations
-
-Payment changes
-
-Account modifications
-
-Password changes
-
-Other customer-account actions
-
-Instead, the system focuses on decision support:
-
-Classify the customer's message.
-
-Retrieve relevant historical support cases.
-
-Generate a grounded response draft.
-
-Decide whether the case should be escalated.
-
-Provide a reason for the escalation decision.
-
-3. System Overview
-
-The proposed system follows the following pipeline:
-
-Customer Message
-       |
-       v
-Intent Classification
-       |
-       v
-Historical Case Retrieval
-       |
-       v
-Evidence Collection
-       |
-       v
-LLM Response Generation
-       |
-       v
-Escalation Decision
-       |
-       v
-Final Support Response
-
-Intent Categories
-
-The system uses eight intents:
-
-Intent
-
-Description
-
-DELIVERY_TRACKING
-
-Delivery delays, missing packages, tracking and delivery status
-
-ORDER_MANAGEMENT
-
-Order cancellation, modification and order-related issues
-
-REFUND_RETURN
-
-Refunds, returns and return-related issues
-
-PAYMENT_BILLING
-
-Payment, billing and charge-related issues
-
-ACCOUNT_SECURITY
-
-Hacked accounts, unauthorized access and account security
-
-PRODUCT_TECHNICAL
-
-Product defects and technical problems
-
-PRIME_DIGITAL
-
-Prime, Kindle, Amazon Music and digital services
-
-GENERAL_COMPLAINT
-
-General complaints or issues that do not clearly fit another category
-
-Intent Classification
-
-The first stage predicts one of the eight predefined customer-support intents.
-
-Historical Retrieval
-
-After identifying the intent, the system searches the prepared AmazonHelp conversation dataset for historically similar customer messages.
-
-TF-IDF vectorization and cosine similarity are used to retrieve the top three historical cases.
-
-The retrieved cases contain:
-
-Historical customer message
-
-Historical Amazon response
-
-Similarity score
-
-These cases provide evidence for the response-generation stage.
-
-Response Generation
-
-The LLM receives:
-
-The customer's current message
-
-The predicted intent
-
-The retrieved historical support cases
-
-It then generates a new response rather than directly copying a historical response.
-
-The generated output contains:
-
-{
-  "reply": "Draft response to the customer",
-  "escalate": false,
-  "reason": "Reason for the escalation decision"
-}
-
-Escalation
-
-The agent also determines whether the issue should be handled automatically or escalated to a human support representative.
-
-The escalation decision is returned together with a reason so that the decision is interpretable.
-
-4. Reproducibility and Runtime
-
-The repository contains the scripts required to reproduce the classifier headline result.
-
-After placing the original dataset at:
-
-data/twcs.csv
-
-the main evaluation pipeline can be executed with:
-
+## 6. Interpretation of Headline Metrics
+
+> [!IMPORTANT]
+> The headline accuracy of **50.00%** measures **intent classification precision only** on the held-out test set.
+
+It **does not** represent:
+* Overall end-to-end task resolution rate
+* Response helpfulness or groundedness
+* Escalation decision correctness
+
+It serves strictly as an internal benchmark for intent routing efficiency.
+
+---
+
+## 7. Development Decision Log
+
+| # | Decision | Context & Justification |
+| :---: | :--- | :--- |
+| **1** | **Target Brand Selection** | Selected `AmazonHelp` from the TWCS dataset due to its high volume of real customer interactions across diverse domain issues. |
+| **2** | **10,000-Pair Working Subset** | Sampled a fixed 10,000-pair dataset to maintain fast, reproducible iteration cycles while avoiding resource exhaustion. |
+| **3** | **8 Intent Scope** | Defined 8 primary classes to balance broad coverage against multi-class ambiguity and boundary overlap. |
+| **4** | **800-Example Training Split** | Set 800 examples for training to establish a lightweight, human-annotated baseline. |
+| **5** | **Dedicated 200 Golden Set** | Formed a distinct 200-example set reserved strictly for final testing and evaluation. |
+| **6** | **Fixed Random Seeds** | Enforced deterministic random seeds across all scripts for full experimental reproducibility. |
+| **7** | **TF-IDF Feature Extraction** | Chosen for classification to establish a fast, interpretable, and computationally light baseline. |
+| **8** | **Logistic Regression Classifier** | Paired with sparse TF-IDF matrices for efficient training and robust baseline performance. |
+| **9** | **Macro F1 Reporting** | Adopted Macro F1 alongside accuracy to accurately capture performance on imbalanced minority intent classes. |
+| **10** | **TF-IDF Vector Retrieval** | Utilized cosine similarity over historical customer messages to ground generations in real support context. |
+| **11** | **Top-3 Case Context Window** | Retrieved 3 cases per query to provide sufficient evidence diversity without exceeding prompt context limits. |
+| **12** | **LLM Response Synthesis** | Configured the LLM to generate novel responses informed by retrieved context rather than outputting exact baseline text. |
+| **13** | **Structured JSON Schema** | Enforced output structure (`reply`, `escalate`, `reason`) for automated evaluation and predictable execution. |
+| **14** | **Restricted Account Execution** | Limited the agent to response generation and escalation tagging to avoid risk in production account management. |
+| **15** | **Dual Baseline Strategy** | Implemented Majority Class and Nearest-Neighbor baselines to clearly isolate and measure system value additions. |
+
+---
+
+## 8. Reproduction Steps
+
+Execute the full pipeline within the target reproduction environment:
+
+```bash
+# 1. Prepare AmazonHelp dataset
 python src/prepare_amazon.py
+
+# 2. Create train/eval splits
 python src/create_split.py
+
+# 3. Train classifier
 python src/train_classifier.py
+
+# 4. Evaluate proposed classifier
 python src/evaluate_classifier.py
+
+# 5. Run baseline comparisons
 python src/evaluate_baselines.py
-
-The headline classifier metrics are written to:
-
-results/metrics.txt
-results/intent_evaluation.csv
-results/confusion_matrix.csv
-
-The pipeline uses a fixed random seed for sampling and splitting, making the reported evaluation reproducible.
-
-The classifier evaluation is designed to run within the assignment's 15-minute reproduction target on a normal development machine.
-
-LLM-based response generation and evaluation are separate API-dependent steps.
-
-5. Intent Classification Evaluation
-
-The labeled dataset was divided into:
-
-Dataset
-
-Examples
-
-Training
-
-800
-
-Testing
-
-200
-
-Total
-
-1,000
-
-The classifier achieved:
-
-Metric
-
-Proposed Model
-
-Majority Baseline
-
-Accuracy
-
-50.00%
-
-33.57%
-
-Macro F1
-
-40.00%
-
-6.28%
-
-The proposed classifier improves over the majority baseline by:
-
-16.43 percentage points in Accuracy
-
-33.72 percentage points in Macro F1
-
-The improvement in Macro F1 is particularly important because the intent classes are imbalanced.
-
-Accuracy alone can hide poor performance on minority classes, while Macro F1 gives every intent equal importance.
-
-6. Baseline Comparison
-
-6.1 Trivial Baseline — Majority Class
-
-The majority baseline always predicts:
-
-DELIVERY_TRACKING
-
-This provides a simple lower-bound reference for the classifier.
-
-Results
-
-Metric
-
-Majority Baseline
-
-Proposed Model
-
-Accuracy
-
-33.57%
-
-50.00%
-
-Macro F1
-
-6.28%
-
-40.00%
-
-The proposed classifier substantially outperforms the majority-class baseline.
-
-This indicates that the classifier is learning useful patterns from customer messages rather than simply predicting the most common intent.
-
-6.2 Simple Baseline — Nearest Historical Response
-
-The second baseline retrieves the single most similar historical customer message using TF-IDF cosine similarity and directly returns the associated Amazon response.
-
-Implementation:
-
-src/nearest_neighbor_baseline.py
-
-This baseline was tested on representative customer-support cases.
-
-It can produce useful responses when the retrieved example is highly similar.
-
-However, it can also return an inappropriate response when lexical similarity does not correspond to semantic similarity.
-
-For example, a Kindle-related technical question retrieved a historical response concerning a telephone-number issue. Although there was some lexical similarity, the historical response did not address the actual underlying problem.
-
-The proposed system addresses this limitation by retrieving multiple historical cases and using an LLM to generate a new response rather than directly copying one historical response.
-
-Component Comparison
-
-Component
-
-Nearest-Neighbor Baseline
-
-Proposed Agent
-
-Intent classification
-
-No
-
-Yes
-
-Historical retrieval
-
-1 case
-
-Top 3 cases
-
-Response generation
-
-Copies historical response
-
-LLM generates response
-
-Evidence synthesis
-
-No
-
-Yes
-
-Escalation decision
-
-No
-
-Yes
-
-Escalation reason
-
-No
-
-Yes
-
-A quantitative response-quality score for this baseline has not been claimed because the full human/LLM response evaluation was not completed due to the LLM API quota limitation.
-
-7. Response Quality Evaluation
-
-Generated responses are evaluated using an LLM-as-judge rubric.
-
-Each response is scored from 1 to 5 on three dimensions.
-
-Dimension
-
-Evaluation Question
-
-Relevance
-
-Does the response address the customer's actual problem?
-
-Groundedness
-
-Is the response supported by the retrieved historical evidence?
-
-Usefulness
-
-Does the response provide a useful next step?
-
-Relevance
-
-Score
-
-Description
-
-1
-
-Does not address the customer's issue
-
-2
-
-Mostly irrelevant
-
-3
-
-Partially addresses the issue
-
-4
-
-Relevant with minor weaknesses
-
-5
-
-Directly addresses the issue
-
-Groundedness
-
-Score
-
-Description
-
-1
-
-Unsupported by evidence
-
-2
-
-Mostly unsupported
-
-3
-
-Partially supported
-
-4
-
-Mostly supported
-
-5
-
-Strongly supported by historical evidence
-
-Usefulness
-
-Score
-
-Description
-
-1
-
-Provides no useful help
-
-2
-
-Provides very limited help
-
-3
-
-Provides a reasonable next step
-
-4
-
-Provides a useful actionable response
-
-5
-
-Provides a clear and highly useful next step
-
-The evaluation harness is implemented in:
-
-src/evaluate_responses.py
-
-8. Human vs LLM Judge Agreement
-
-The automated LLM judge is intended to be validated against human ratings.
-
-The evaluation process is:
-
-Generated Response
-        |
-        +----------------------+
-        |                      |
-        v                      v
-  Human Rating           LLM Rating
-        |                      |
-        +----------+-----------+
-                   |
-                   v
-           Agreement Analysis
-
-The same generated responses are rated by both the human evaluator and the LLM judge using:
-
-Relevance
-
-Groundedness
-
-Usefulness
-
-Current Evaluation Status
-
-The response-quality evaluation harness was implemented, but the initial evaluation run was interrupted by the daily LLM API token limit.
-
-Therefore, this report does not claim a numerical human-vs-LLM agreement score that was not actually measured.
-
-This is reported as an evaluation limitation rather than replacing the missing evaluation with unsupported numbers.
-
-Metric
-
-Result
-
-Number of evaluated responses
-
-Not measured
-
-Relevance agreement
-
-Not measured
-
-Groundedness agreement
-
-Not measured
-
-Usefulness agreement
-
-Not measured
-
-Overall agreement
-
-Not measured
-
-9. Failure Analysis
-
-Failure 1 — Delivery vs Order Confusion
-
-Customer messages containing words such as:
-
-order
-package
-delivery
-status
-
-can be confused between:
-
-DELIVERY_TRACKING
-
-and:
-
-ORDER_MANAGEMENT
-
-Hypothesis
-
-The TF-IDF classifier relies heavily on lexical features and does not fully capture semantic differences.
-
-Improvement
-
-Use sentence embeddings or a stronger semantic classifier.
-
-Failure 2 — Poor Performance on Rare Intents
-
-The classifier performs poorly on less represented categories, particularly:
-
-PAYMENT_BILLING
-
-PRIME_DIGITAL
-
-REFUND_RETURN
-
-Hypothesis
-
-There are not enough labeled examples for the classifier to learn robust patterns.
-
-Improvement
-
-Increase human-labeled training examples for minority intents.
-
-Failure 3 — General Complaint Overlap
-
-Customers can mention a specific issue while primarily expressing dissatisfaction.
-
-For example, a refund complaint may also contain strong general dissatisfaction with Amazon.
-
-Hypothesis
-
-GENERAL_COMPLAINT overlaps with several actionable intents.
-
-Improvement
-
-Use a labeling rule that prioritizes the actionable support issue when it is clearly identifiable.
-
-For example:
-
-If a concrete support issue exists:
-    assign the actionable intent
-
-Otherwise:
-    assign GENERAL_COMPLAINT
-
-Failure 4 — Lexical Retrieval Misses Semantic Similarity
-
-TF-IDF retrieval depends on word overlap.
-
-Two messages describing the same issue with different wording can receive a relatively low similarity score.
-
-For example:
-
-"My package hasn't arrived yet."
-
-"Where is my delivery? It was supposed to come yesterday."
-
-These messages have similar meaning but different wording.
-
-Hypothesis
-
-TF-IDF cannot capture semantic equivalence effectively.
-
-Improvement
-
-Use sentence embeddings followed by reranking.
-
-Failure 5 — Nearest-Neighbor Response Can Be Over-Specific
-
-The nearest-neighbor baseline directly copies the response from the most similar historical case.
-
-A retrieved case may share words with the new customer message but describe a different underlying issue.
-
-Example
-
-A Kindle-related technical question retrieved a historical response related to a telephone-number issue.
-
-The response therefore contained information that was not relevant to the customer's actual problem.
-
-Hypothesis
-
-Single-example lexical retrieval is too sensitive to surface-level word overlap.
-
-Improvement
-
-Retrieve multiple examples and generate a response from the common evidence rather than copying one historical response.
-
-10. What Is Misleading About My Headline Number?
-
-The headline classifier accuracy of 50.00% should not be interpreted as the overall performance of the customer-support agent.
-
-It measures only intent classification accuracy on the held-out testing set.
-
-It does not measure:
-
-Response relevance
-
-Response groundedness
-
-Response usefulness
-
-Escalation accuracy
-
-Customer satisfaction
-
-Actual issue resolution
-
-Business impact
-
-The result is also affected by class imbalance.
-
-Therefore, Macro F1 is reported alongside accuracy.
-
-Headline Metrics
-
-Metric
-
-Result
-
-Accuracy
-
-50.00%
-
-Macro F1
-
-40.00%
-
-The correct interpretation is:
-
-The classifier correctly predicts the predefined support intent for 50.00% of the held-out test examples.
-
-It should not be interpreted as:
-
-The AI agent successfully resolves 50.00% of customer problems.
-
-The headline number is therefore useful as a classifier metric, but it is not a complete measure of customer-support quality.
-
-11. Decision Log
-
-The following table summarizes the major non-obvious decisions made during development.
-
-#
-
-Decision
-
-Why?
-
-1
-
-Selected AmazonHelp as the target brand
-
-AmazonHelp provides a large number of real customer-support conversations, making it suitable for experimentation and evaluation.
-
-2
-
-Used a 10,000-pair working dataset
-
-The complete dataset is very large, so a fixed working sample keeps experimentation practical while remaining reproducible.
-
-3
-
-Defined eight intents
-
-Eight categories provide useful support coverage without creating excessive overlap between classes.
-
-4
-
-Used 800 labeled examples for training
-
-This provides a manageable amount of manually labeled data for the initial classifier.
-
-5
-
-Created a separate 200-example golden set
-
-A separate evaluation set prevents evaluation examples from being used to train the classifier.
-
-6
-
-Used a fixed random seed
-
-Fixed sampling and splitting make the experiments reproducible.
-
-7
-
-Used TF-IDF for classification
-
-TF-IDF is lightweight, fast and easy to interpret for a prototype.
-
-8
-
-Used Logistic Regression
-
-Logistic Regression works efficiently with sparse TF-IDF features.
-
-9
-
-Reported Macro F1 alongside accuracy
-
-Macro F1 gives equal importance to each intent and is more informative when classes are imbalanced.
-
-10
-
-Used TF-IDF cosine similarity for retrieval
-
-It provides a simple and reproducible way to retrieve historically similar customer messages.
-
-11
-
-Retrieved three historical cases
-
-Multiple examples provide more evidence than relying on a single historical case.
-
-12
-
-Used an LLM for response generation
-
-The LLM can synthesize information from multiple historical cases instead of copying one response.
-
-13
-
-Used structured output
-
-Returning reply, escalate, and reason makes the agent output consistent and easier to evaluate.
-
-14
-
-Restricted direct customer-account actions
-
-The prototype does not have production integrations, so it only drafts responses and recommends escalation.
-
-15
-
-Added majority and nearest-neighbor baselines
-
-These provide simple reference points for measuring whether the proposed approach adds value.
